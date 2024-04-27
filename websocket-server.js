@@ -32,3 +32,11 @@ wss.on("connection", function connection(ws) {
   ws.on("close", () => console.log("Client disconnected"));
   ws.send("Welcome to the secure WebSocket server!");
 });
+
+process.on("SIGTERM", () => {
+  console.log("Process terminating...");
+  // Close your database connections, stop background tasks, etc.
+  server.close(() => {
+    console.log("Process exited");
+  });
+});
