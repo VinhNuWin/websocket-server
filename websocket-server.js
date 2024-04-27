@@ -28,6 +28,7 @@ wss.on("connection", function connection(ws) {
   ws.on("message", function incoming(message) {
     console.log("received: %s", message);
     ws.send(`You sent -> ${message}`);
+    console.log("Sent data to Unity: ", message);
   });
   ws.on("close", () => console.log("Client disconnected"));
   ws.send("Welcome to the secure WebSocket server!");
