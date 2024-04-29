@@ -68,19 +68,3 @@ process.on("SIGTERM", () => {
     console.log("Process exited");
   });
 });
-
-const interval = setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) return ws.terminate();
-
-    ws.isAlive = false;
-    ws.ping(null, false, true);
-  });
-}, 30000); // Ping every 30 seconds
-
-wss.on("connection", (ws) => {
-  ws.isAlive = true;
-  ws.on("pong", () => {
-    ws.isAlive = true;
-  });
-});
