@@ -63,6 +63,15 @@ wss.on("connection", function connection(ws) {
   ws.send(`Welcome, you are client ${clientId}!`);
 });
 
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) return ws.terminate();
+
+    ws.isAlive = false;
+    ws.ping(null, false, true);
+  });
+}, 30000);
+
 process.on("SIGTERM", () => {
   console.log("Process terminating...");
   // Close your database connections, stop background tasks, etc.
