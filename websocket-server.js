@@ -29,6 +29,12 @@ const clients = {};
 let clientIdCounter = 1;
 
 wss.on("connection", function connection(ws) {
+  ws.isAlive = true;
+
+  ws.on("pong", () => {
+    ws.isAlive = true; // Set to true on receiving pong
+  });
+
   // Assign a unique identifier to the client
   const clientId = clientIdCounter++;
   console.log(`Client ${clientId} connected.`);
@@ -63,14 +69,14 @@ wss.on("connection", function connection(ws) {
   ws.send(`Welcome, you are client ${clientId}!`);
 });
 
-setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (ws.isAlive === false) return ws.terminate();
+// setInterval(() => {
+//   wss.clients.forEach((ws) => {
+//     if (ws.isAlive === false) return ws.terminate();
 
-    ws.isAlive = false;
-    ws.ping();
-  });
-}, 30000);
+//     ws.isAlive = false;
+//     ws.ping();
+//   });
+// }, 30000);
 
 process.on("SIGTERM", () => {
   console.log("Process terminating...");
