@@ -68,7 +68,7 @@ setInterval(() => {
     if (ws.isAlive === false) return ws.terminate();
 
     ws.isAlive = false;
-    ws.ping(null, false, true);
+    ws.ping();
   });
 }, 30000);
 
