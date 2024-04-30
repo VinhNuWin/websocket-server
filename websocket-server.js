@@ -38,12 +38,20 @@ wss.on("connection", function connection(ws) {
 
   ws.on("message", function incoming(message) {
     console.log(`Received from client ${clientId}: ${message}`);
-    wss.clients.forEach(function each(client) {
-      if (client !== ws && client.readyState === WebSocket.OPEN) {
-        client.send(message);
-      }
-    });
-    console.log(`Sent data to client ${clientId}: ${message}`);
+
+    // Check if the message is an acknowledgment
+    if (message === "Data received") {
+      console.log("Acknowledgment received, closing connection.");
+      ws.close();
+    } else {
+      // Broadcast the message to other clients
+      wss.clients.forEach(function each(client) {
+        if (client !== ws && client.readyState === WebSocket.OPEN) {
+          client.send(message);
+        }
+      });
+      console.log(`Broadcasted message to other clients: ${message}`);
+    }
   });
 
   ws.on("close", () => {
