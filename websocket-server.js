@@ -1,7 +1,8 @@
 const express = require("express");
-const app = express();
 const WebSocket = require("ws");
 const cors = require("cors");
+
+const app = express();
 
 // Configuring CORS
 app.use(
@@ -22,78 +23,34 @@ const server = app.listen(process.env.PORT || 3000, () => {
 
 const wss = new WebSocket.Server({ server });
 
-// Object to store client connections with unique identifiers
-const clients = {};
-
-// Counter for generating unique client IDs
-let clientIdCounter = 1;
-
+// Handling new WebSocket connections
 wss.on("connection", function connection(ws) {
-  ws.isAlive = true;
+  console.log("New client connected.");
 
-  ws.on("pong", () => {
-    console.log("Pong received from client");
-    ws.isAlive = true; // Set to true on receiving pong
-  });
-
-  setInterval(() => {
-    wss.clients.forEach((ws) => {
-      if (ws.isAlive === false) {
-        console.log("No pong received, terminating client");
-        return ws.terminate();
-      }
-
-      ws.isAlive = false;
-      ws.ping(() => {
-        console.log("Ping sent");
-      });
-    });
-  }, 30000);
-
-  // Assign a unique identifier to the client
-  const clientId = clientIdCounter++;
-  console.log(`Client ${clientId} connected.`);
-
-  // Store the WebSocket connection with the client ID
-  clients[clientId] = ws;
-
+  // Event listener for messages from clients
   ws.on("message", function incoming(message) {
-    console.log(`Received from client ${clientId}: ${message}`);
+    console.log(`Message received: ${message}`);
 
-    // Check if the message is an acknowledgment
-    if (message === "Data received") {
-      console.log("Acknowledgment received, closing connection.");
-      ws.close();
-    } else {
-      // Broadcast the message to other clients
-      wss.clients.forEach(function each(client) {
-        if (client !== ws && client.readyState === WebSocket.OPEN) {
-          client.send(message);
-        }
-      });
-      console.log(`Broadcasted message to other clients: ${message}`);
-    }
+    wss.clients.forEach((client) => {
+      if (client !== ws && client.readyState === WebSocket.OPEN) {
+        client.send(message);
+      }
+    });
   });
 
+  // Handling connection closure
   ws.on("close", () => {
-    console.log(`Client ${clientId} disconnected`);
-    // Remove the WebSocket connection associated with the client ID
-    delete clients[clientId];
+    console.log("Client disconnected");
   });
 
-  ws.send(`Welcome, you are client ${clientId}!`);
+  // Send a welcome message to the client upon connection
+  ws.send("Welcome, you are connected!");
 });
 
+// Optional: handle HTTP server close events
 process.on("SIGTERM", () => {
-  console.log("Process terminating...");
-  // Close your database connections, stop background tasks, etc.
-
-  // Close all WebSocket connections
-  Object.values(clients).forEach((ws) => {
-    ws.terminate(); // Terminate the WebSocket connection
-  });
-
+  console.log("Shutting down server...");
   server.close(() => {
-    console.log("Process exited");
+    console.log("Server has shut down.");
   });
 });
