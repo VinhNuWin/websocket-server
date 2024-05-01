@@ -27,6 +27,17 @@ const wss = new WebSocket.Server({ server });
 wss.on("connection", function connection(ws) {
   console.log("New client connected.");
 
+  // Set up a ping interval for the connection
+  const interval = setInterval(() => {
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.ping("heartbeat");
+    }
+  }, 30000); // Ping every 30 seconds
+
+  ws.on("pong", function handlePong(data) {
+    console.log(`Pong received from a client: ${data}`);
+  });
+
   // Event listener for messages from clients
   ws.on("message", function incoming(message) {
     console.log(`Message received: ${message}`);
