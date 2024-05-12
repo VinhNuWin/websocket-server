@@ -1,14 +1,16 @@
 const express = require("express");
 const WebSocket = require("ws");
 const cors = require("cors");
+const axios = require("axios");
 
 const app = express();
+const ADB_SERVER_URL = "https://adb-api-server-43e9c48c4f66.herokuapp.com/";
 
-// Configuring CORS
+// CORS Configuration
 app.use(
   cors({
-    origin: "*", // Allowing all origins, customize based on your needs
-    methods: ["GET", "POST", "PUT", "DELETE"], // Specify allowed methods
+    origin: "*",
+    methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
@@ -22,9 +24,6 @@ const server = app.listen(process.env.PORT || 3000, () => {
 
 const wss = new WebSocket.Server({ server });
 
-let unityClient = null;
-let pendingMessages = []; // Store messages temporarily if Unity client is not ready
-
 wss.on("connection", function connection(ws) {
   console.log("New client connected.");
 
@@ -32,37 +31,22 @@ wss.on("connection", function connection(ws) {
     console.log("Received:", message);
     try {
       const parsedMessage = JSON.parse(message);
-
       if (validateMessage(parsedMessage)) {
-        if (
-          parsedMessage.type === "register" &&
-          parsedMessage.client === "unity"
-        ) {
-          // Register the Unity client
-          unityClient = ws;
-          console.log("Unity client registered.");
-          sendPendingMessages(); // Send any messages that were held while the Unity client was not connected
-        } else {
-          // Handle other messages normally
-          if (unityClient && unityClient.readyState === WebSocket.OPEN) {
-            unityClient.send(JSON.stringify(parsedMessage));
-            console.log("Message sent to Unity client.");
-          } else {
-            console.log("Unity client not ready, storing message.");
-            pendingMessages.push(parsedMessage); // Store messages if Unity client is not ready
-          }
-        }
+        handleADBCommand(parsedMessage);
+      } else {
+        ws.send(
+          JSON.stringify({ type: "error", message: "Invalid message format" })
+        );
       }
     } catch (error) {
       console.error("Failed to parse message as JSON:", error);
+      ws.send(
+        JSON.stringify({ type: "error", message: "Error processing message" })
+      );
     }
   });
 
   ws.on("close", function close() {
-    if (ws === unityClient) {
-      unityClient = null; // Clear the Unity client reference if it disconnects
-      console.log("Unity client disconnected.");
-    }
     console.log("Client disconnected");
   });
 
@@ -76,23 +60,37 @@ wss.on("connection", function connection(ws) {
 });
 
 function validateMessage(message) {
-  return message && message.type;
+  // Ensure the message contains the necessary fields
+  return message && message.deviceId && message.deepLinkUrl;
 }
 
-function sendPendingMessages() {
-  if (unityClient && unityClient.readyState === WebSocket.OPEN) {
-    pendingMessages.forEach((msg) => unityClient.send(JSON.stringify(msg)));
-    pendingMessages = []; // Clear the pending messages after sending
-    console.log("Pending messages sent to Unity client.");
-  }
+function handleADBCommand(message) {
+  // Construct and send a request to your ADB server
+  const { deviceId, deepLinkUrl } = message;
+  axios
+    .post(ADB_SERVER_URL, { deviceId, deepLinkUrl })
+    .then((response) => {
+      console.log("ADB Command executed:", response.data);
+      broadcast({ type: "adb-response", data: response.data });
+    })
+    .catch((error) => {
+      console.error("Error executing ADB command:", error);
+      broadcast({
+        type: "adb-error",
+        message: "ADB command failed",
+        error: error.message,
+      });
+    });
 }
 
-process.on("SIGTERM", () => {
-  console.log("Shutting down server...");
-  server.close(() => {
-    console.log("Server has shut down.");
+// Utility to send a message to all connected clients
+function broadcast(data) {
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify(data));
+    }
   });
-});
+}
 
 // const express = require("express");
 // const WebSocket = require("ws");
@@ -110,7 +108,6 @@ process.on("SIGTERM", () => {
 //   })
 // );
 
-// // A simple test route
 // app.get("/", (req, res) => res.send("Hello from WebSocket server"));
 
 // const server = app.listen(process.env.PORT || 3000, () => {
@@ -119,43 +116,71 @@ process.on("SIGTERM", () => {
 
 // const wss = new WebSocket.Server({ server });
 
-// // Handling new WebSocket connections
+// let unityClient = null;
+// let pendingMessages = []; // Store messages temporarily if Unity client is not ready
+
 // wss.on("connection", function connection(ws) {
 //   console.log("New client connected.");
 
-//   // Event listener for messages from clients
-
 //   ws.on("message", (message) => {
 //     console.log("Received:", message);
+//     try {
+//       const parsedMessage = JSON.parse(message);
 
-//     // Broadcast to other clients
-//     wss.clients.forEach((client) => {
-//       if (client !== ws && client.readyState === WebSocket.OPEN) {
-//         client.send(JSON.stringify(message));
+//       if (validateMessage(parsedMessage)) {
+//         if (
+//           parsedMessage.type === "register" &&
+//           parsedMessage.client === "unity"
+//         ) {
+//           // Register the Unity client
+//           unityClient = ws;
+//           console.log("Unity client registered.");
+//           sendPendingMessages(); // Send any messages that were held while the Unity client was not connected
+//         } else {
+//           // Handle other messages normally
+//           if (unityClient && unityClient.readyState === WebSocket.OPEN) {
+//             unityClient.send(JSON.stringify(parsedMessage));
+//             console.log("Message sent to Unity client.");
+//           } else {
+//             console.log("Unity client not ready, storing message.");
+//             pendingMessages.push(parsedMessage); // Store messages if Unity client is not ready
+//           }
+//         }
 //       }
-//     });
-
-//     return message;
+//     } catch (error) {
+//       console.error("Failed to parse message as JSON:", error);
+//     }
 //   });
 
 //   ws.on("close", function close() {
-//     console.log("Disconnected");
+//     if (ws === unityClient) {
+//       unityClient = null; // Clear the Unity client reference if it disconnects
+//       console.log("Unity client disconnected.");
+//     }
+//     console.log("Client disconnected");
 //   });
 
 //   ws.on("error", function error(err) {
 //     console.error("WebSocket error: ", err);
 //   });
 
-//   // Handling connection closure
-//   ws.on("close", () => {
-//     console.log("Client disconnected");
-//   });
-
-//   // Send a welcome message to the client upon connection
-//   ws.send("Welcome, you are connected!");
+//   ws.send(
+//     JSON.stringify({ type: "welcome", message: "Welcome, you are connected!" })
+//   );
 // });
 
-// // Optional: handle HTTP server close events
+// function validateMessage(message) {
+//   return message && message.type;
+// }
+
+// function sendPendingMessages() {
+//   if (unityClient && unityClient.readyState === WebSocket.OPEN) {
+//     pendingMessages.forEach((msg) => unityClient.send(JSON.stringify(msg)));
+//     pendingMessages = []; // Clear the pending messages after sending
+//     console.log("Pending messages sent to Unity client.");
+//   }
+// }
+
 // process.on("SIGTERM", () => {
 //   console.log("Shutting down server...");
 //   server.close(() => {
