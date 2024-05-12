@@ -6,11 +6,15 @@ const axios = require("axios");
 const app = express();
 const ADB_SERVER_URL = "https://adb-api-server-43e9c48c4f66.herokuapp.com/";
 
-// CORS Configuration
+// Hardcoded values for testing
+const HARDCODED_DEVICE_ID = "2G0YC1ZF93023M";
+const HARDCODED_DEEPLINK_URL = "craftlab://open?sceneId=homefeed";
+
+// Configuring CORS
 app.use(
   cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: "*", // Allowing all origins, customize based on your needs
+    methods: ["GET", "POST", "PUT", "DELETE"], // Specify allowed methods
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
   })
@@ -24,6 +28,9 @@ const server = app.listen(process.env.PORT || 3000, () => {
 
 const wss = new WebSocket.Server({ server });
 
+let unityClient = null;
+let pendingMessages = []; // Store messages temporarily if Unity client is not ready
+
 wss.on("connection", function connection(ws) {
   console.log("New client connected.");
 
@@ -32,21 +39,35 @@ wss.on("connection", function connection(ws) {
     try {
       const parsedMessage = JSON.parse(message);
       if (validateMessage(parsedMessage)) {
-        handleADBCommand(parsedMessage);
-      } else {
-        ws.send(
-          JSON.stringify({ type: "error", message: "Invalid message format" })
-        );
+        handleADBCommand(); // Call handleADBCommand without parameters for hardcoding
+
+        if (
+          parsedMessage.type === "register" &&
+          parsedMessage.client === "unity"
+        ) {
+          unityClient = ws;
+          console.log("Unity client registered.");
+          sendPendingMessages();
+        } else {
+          if (unityClient && unityClient.readyState === WebSocket.OPEN) {
+            unityClient.send(JSON.stringify(parsedMessage));
+            console.log("Message sent to Unity client.");
+          } else {
+            console.log("Unity client not ready, storing message.");
+            pendingMessages.push(parsedMessage);
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to parse message as JSON:", error);
-      ws.send(
-        JSON.stringify({ type: "error", message: "Error processing message" })
-      );
     }
   });
 
   ws.on("close", function close() {
+    if (ws === unityClient) {
+      unityClient = null; // Clear the Unity client reference if it disconnects
+      console.log("Unity client disconnected.");
+    }
     console.log("Client disconnected");
   });
 
@@ -60,43 +81,62 @@ wss.on("connection", function connection(ws) {
 });
 
 function validateMessage(message) {
-  // Ensure the message contains the necessary fields
-  return message && message.deviceId && message.deepLinkUrl;
+  return message && message.type;
 }
 
-function handleADBCommand(message) {
-  // Construct and send a request to your ADB server
-  const { deviceId, deepLinkUrl } = message;
+function sendPendingMessages() {
+  if (unityClient && unityClient.readyState === WebSocket.OPEN) {
+    pendingMessages.forEach((msg) => unityClient.send(JSON.stringify(msg)));
+    pendingMessages = []; // Clear the pending messages after sending
+    console.log("Pending messages sent to Unity client.");
+  }
+}
+
+function handleADBCommand() {
+  // Use hardcoded values for testing
+  const deviceId = HARDCODED_DEVICE_ID;
+  const deepLinkUrl = HARDCODED_DEEPLINK_URL;
+
   axios
     .post(ADB_SERVER_URL, { deviceId, deepLinkUrl })
     .then((response) => {
       console.log("ADB Command executed:", response.data);
-      broadcast({ type: "adb-response", data: response.data });
+      if (unityClient && unityClient.readyState === WebSocket.OPEN) {
+        unityClient.send(
+          JSON.stringify({ type: "adb-response", data: response.data })
+        );
+        console.log("Response sent to Unity client.");
+      }
     })
     .catch((error) => {
       console.error("Error executing ADB command:", error);
-      broadcast({
-        type: "adb-error",
-        message: "ADB command failed",
-        error: error.message,
-      });
+      if (unityClient && unityClient.readyState === WebSocket.OPEN) {
+        unityClient.send(
+          JSON.stringify({
+            type: "adb-error",
+            message: "ADB command failed",
+            error: error.message,
+          })
+        );
+        console.log("Error response sent to Unity client.");
+      }
     });
 }
 
-// Utility to send a message to all connected clients
-function broadcast(data) {
-  wss.clients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(data));
-    }
+process.on("SIGTERM", () => {
+  console.log("Shutting down server...");
+  server.close(() => {
+    console.log("Server has shut down.");
   });
-}
+});
 
 // const express = require("express");
 // const WebSocket = require("ws");
 // const cors = require("cors");
+// const axios = require("axios");
 
 // const app = express();
+// const ADB_SERVER_URL = "https://adb-api-server-43e9c48c4f66.herokuapp.com/";
 
 // // Configuring CORS
 // app.use(
@@ -179,6 +219,25 @@ function broadcast(data) {
 //     pendingMessages = []; // Clear the pending messages after sending
 //     console.log("Pending messages sent to Unity client.");
 //   }
+// }
+
+// function handleADBCommand(message) {
+//   // Construct and send a request to your ADB server
+//   const { deviceId, deepLinkUrl } = message;
+//   axios
+//     .post(ADB_SERVER_URL, { deviceId, deepLinkUrl })
+//     .then((response) => {
+//       console.log("ADB Command executed:", response.data);
+//       broadcast({ type: "adb-response", data: response.data });
+//     })
+//     .catch((error) => {
+//       console.error("Error executing ADB command:", error);
+//       broadcast({
+//         type: "adb-error",
+//         message: "ADB command failed",
+//         error: error.message,
+//       });
+//     });
 // }
 
 // process.on("SIGTERM", () => {
