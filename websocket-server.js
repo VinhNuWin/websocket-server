@@ -38,36 +38,14 @@ wss.on("connection", function connection(ws) {
     console.log("Received:", message);
     let parsedMessage;
     try {
-      // Convert Buffer to string if needed
-      const messageStr =
-        message instanceof Buffer ? message.toString() : message;
-      parsedMessage = JSON.parse(messageStr);
+      parsedMessage = JSON.parse(message.toString());
       console.log("Parsed Message:", parsedMessage);
     } catch (error) {
       console.error("Failed to parse message as JSON:", error);
       return;
     }
 
-    if (validateMessage(parsedMessage)) {
-      handleADBCommand(); // Call handleADBCommand without parameters for hardcoding
-
-      if (
-        parsedMessage.type === "register" &&
-        parsedMessage.client === "unity"
-      ) {
-        unityClient = ws;
-        console.log("Unity client registered.");
-        sendPendingMessages();
-      } else {
-        if (unityClient && unityClient.readyState === WebSocket.OPEN) {
-          unityClient.send(JSON.stringify(parsedMessage));
-          console.log("Message sent to Unity client.");
-        } else {
-          console.log("Unity client not ready, storing message.");
-          pendingMessages.push(parsedMessage);
-        }
-      }
-    }
+    handleWebSocketMessage(parsedMessage, ws);
   });
 
   ws.on("close", function close() {
@@ -86,6 +64,26 @@ wss.on("connection", function connection(ws) {
     JSON.stringify({ type: "welcome", message: "Welcome, you are connected!" })
   );
 });
+
+function handleWebSocketMessage(parsedMessage, ws) {
+  if (validateMessage(parsedMessage)) {
+    handleADBCommand(); // Call handleADBCommand without parameters for hardcoding
+
+    if (parsedMessage.type === "register" && parsedMessage.client === "unity") {
+      unityClient = ws;
+      console.log("Unity client registered.");
+      sendPendingMessages();
+    } else {
+      if (unityClient && unityClient.readyState === WebSocket.OPEN) {
+        unityClient.send(JSON.stringify(parsedMessage));
+        console.log("Message sent to Unity client.");
+      } else {
+        console.log("Unity client not ready, storing message.");
+        pendingMessages.push(parsedMessage);
+      }
+    }
+  }
+}
 
 function validateMessage(message) {
   return message && message.type;
